@@ -1,0 +1,218 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  # ── Stage 1: Backend ─ Install, Lint, Test ──────────────────────────
+  backend:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          uv sync --extra dev
+          cp .env.example .env
+
+      - name: Run linter
+        working-directory: backend
+        run: uv run ruff check .
+
+      - name: Start DB
+        working-directory: backend/timescaledb-env
+        run: docker compose up -d --wait
+
+      - name: Run tests
+        working-directory: backend
+        run: uv run pytest --cov --cov-report=xml --junitxml=test-results.xml
+
+      - name: Upload test report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-test-report
+          path: |
+            backend/coverage.xml
+            backend/test-results.xml
+
+  # ── Stage 2: Frontend ─ Install, Lint, Test ─────────────────────────
+  frontend:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci --legacy-peer-deps
+
+      - name: Run linter
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Run tests
+        working-directory: frontend
+        run: npm run test:ci
+
+      - name: Upload test report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: frontend-test-report
+          path: frontend/coverage/
+          if-no-files-found: warn
+
+  # ── Stage 3: Security Scan ─ Trivy + SBOM + VEX ────────────────────
+  security-scan:
+    runs-on: ubuntu-24.04
+    needs: [backend, frontend]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Trivy filesystem scan (table)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: table
+          severity: HIGH,CRITICAL
+          output: trivy-report.txt
+
+      - name: Run Trivy filesystem scan (JSON)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: json
+          severity: HIGH,CRITICAL
+          output: trivy-report.json
+
+      - name: Generate SBOM (CycloneDX)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: cyclonedx
+          output: sbom-cyclonedx.json
+
+      - name: Generate OpenVEX document
+        run: |
+          TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%S.000Z)
+          cat > vex.openvex.json << EOF
+          {
+            "@context": "https://openvex.dev/ns/v0.2.0",
+            "@id": "https://github.com/${{ github.repository }}/vex/${{ github.run_id }}",
+            "author": "github/actions/${{ github.actor }}",
+            "timestamp": "${TIMESTAMP}",
+            "version": 1,
+            "tooling": "trivy/aquasecurity",
+            "statements": []
+          }
+          EOF
+
+      - name: Upload security reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: |
+            trivy-report.txt
+            trivy-report.json
+            sbom-cyclonedx.json
+            vex.openvex.json
+
+  # ── Stage 4: OSSF Scorecard ────────────────────────────────────────
+  scorecard:
+    runs-on: ubuntu-24.04
+    needs: [security-scan]
+    permissions:
+      security-events: write
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: ossf/scorecard-action@v2.4.0
+        with:
+          results_file: scorecard-results.sarif
+          results_format: sarif
+          publish_results: true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scorecard-report
+          path: scorecard-results.sarif
+
+  # ── Stage 5: Build & Push Docker Images (main only) ────────────────
+  build-and-push:
+    runs-on: ubuntu-24.04
+    needs: [security-scan]
+    if: github.ref == 'refs/heads/main'
+    env:
+      REGISTRY: ghcr.io
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lowercase repo name
+        run: echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}" >> $GITHUB_ENV
+
+      - name: Login to registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push backend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:latest
+
+      - name: Build and push frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend:latest
+
+      - name: Trivy scan backend image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-backend:latest
+          format: table
+          severity: HIGH,CRITICAL
+          output: trivy-backend-image.txt
+
+      - name: Trivy scan frontend image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-frontend:latest
+          format: table
+          severity: HIGH,CRITICAL
+          output: trivy-frontend-image.txt
+
+      - name: Upload image scan reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image-reports
+          path: |
+            trivy-backend-image.txt
+            trivy-frontend-image.txt

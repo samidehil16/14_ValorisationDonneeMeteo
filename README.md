@@ -1,5 +1,7 @@
 # Valorisation Donnée Météo
 
+![CI/CD Pipeline](https://github.com/samidehil16/14_ValorisationDonneeMeteo/actions/workflows/ci-tp.yml/badge.svg)
+
 Projet Data For Good - Saison 14
 
 ## Structure du projet
