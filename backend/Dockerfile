@@ -1,21 +1,35 @@
-FROM python:3.12-slim-bookworm
+# syntax=docker/dockerfile:1.7
+# ── Build stage (Docker Hardened Image, dev variant) ──────────────────
+FROM dhi.io/python:3.13-debian13-dev AS builder
 
 WORKDIR /app
+
+COPY --from=ghcr.io/astral-sh/uv:0.10.0 /uv /uvx /bin/
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     UV_NO_DEV=1 \
-    PATH="/app/.venv/bin:$PATH"
+    UV_LINK_MODE=copy \
+    UV_CACHE_DIR=/root/.cache/uv
 
-COPY --from=ghcr.io/astral-sh/uv:0.10.0 /uv /uvx /bin/
+COPY pyproject.toml uv.lock ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked --no-install-project
 
 COPY . .
-RUN uv sync --locked
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --locked
 
-# Create non-root user
-RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin appuser \
-    && chown -R appuser:appuser /app
-USER appuser
+# ── Runtime stage (DHI distroless: no shell, no pkg manager, non-root) ─
+FROM dhi.io/python:3.13-debian13
+
+WORKDIR /app
+
+COPY --from=builder --chown=nonroot:nonroot /app /app
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PATH="/app/.venv/bin:$PATH"
 
 EXPOSE 8000
-CMD ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000", "--access-logfile", "-", "--error-logfile", "-", "--log-level", "info"]
+ENTRYPOINT ["gunicorn", "config.wsgi:application", "--bind", "0.0.0.0:8000", "--access-logfile", "-", "--error-logfile", "-", "--log-level", "info"]

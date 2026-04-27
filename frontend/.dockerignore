@@ -1,0 +1,24 @@
+# VCS
+.git
+.gitignore
+
+# Node
+node_modules
+.nuxt
+.output
+.cache
+dist
+coverage
+
+# Editor / OS
+.vscode
+.idea
+.DS_Store
+
+# Tests / docs
+README.md
+vitest.config.ts
+
+# Local env
+.env
+.env.*

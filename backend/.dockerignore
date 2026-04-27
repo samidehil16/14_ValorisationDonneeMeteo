@@ -1,0 +1,38 @@
+# VCS
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.ruff_cache
+.tox
+.coverage
+htmlcov
+*.egg-info
+.venv
+venv
+
+# Editor / OS
+.vscode
+.idea
+.DS_Store
+
+# Local data not needed in the image
+db_data
+notebooks
+dev_scripts
+timescaledb-env
+sql
+
+# Docs / tests artefacts
+README.md
+openapi
+tox.ini
+
+# Local env
+.env
+.env.*

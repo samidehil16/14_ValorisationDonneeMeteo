@@ -1,27 +1,26 @@
-FROM node:24-alpine AS build
+# syntax=docker/dockerfile:1.7
+# ── Build stage (Docker Hardened Image, dev variant) ──────────────────
+FROM dhi.io/node:24-debian13-dev AS build
 
 WORKDIR /app
 
-COPY package*.json .
+ENV NPM_CONFIG_CACHE=/root/.npm
 
-RUN npm install
+COPY package.json package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --no-audit --no-fund
 
 COPY . .
-
 RUN npm run build
 
-FROM node:24-alpine AS prod
+# ── Runtime stage (DHI distroless: no shell, no npm, non-root) ────────
+FROM dhi.io/node:24-debian13
 
 WORKDIR /app
 
-# Create non-root user
-RUN addgroup -S appuser && adduser -S appuser -G appuser
-
-COPY --from=build --chown=appuser:appuser /app/.output /app/.output
+COPY --from=build --chown=nonroot:nonroot /app/.output /app/.output
 
 ENV NODE_ENV=production
-USER appuser
 
 EXPOSE 3000
-
-CMD [ "node", ".output/server/index.mjs" ]
+ENTRYPOINT ["node", ".output/server/index.mjs"]
