@@ -107,20 +107,13 @@ jobs:
           format: cyclonedx
           output: sbom-cyclonedx.json
 
-      - name: Generate OpenVEX document
+      - name: Generate OpenVEX document from Trivy report
         run: |
-          TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%S.000Z)
-          cat > vex.openvex.json << EOF
-          {
-            "@context": "https://openvex.dev/ns/v0.2.0",
-            "@id": "https://github.com/${{ github.repository }}/vex/${{ github.run_id }}",
-            "author": "github/actions/${{ github.actor }}",
-            "timestamp": "${TIMESTAMP}",
-            "version": 1,
-            "tooling": "trivy/aquasecurity",
-            "statements": []
-          }
-          EOF
+          python3 scripts/generate_vex.py \
+            trivy-report.json \
+            vex.openvex.json \
+            --author "github/actions/${{ github.actor }}" \
+            --id "https://github.com/${{ github.repository }}/vex/${{ github.run_id }}"
 
       - name: Upload security reports
         uses: actions/upload-artifact@v4

@@ -12,7 +12,7 @@ Trace étape par étape du travail réalisé pour respecter les trois pages du s
 | Test report | ✅ | CI artifact `backend-test-report` (JUnit XML + coverage XML) |
 | Scan code report | ✅ | [reports/scorecard.json](reports/scorecard.json) + artifact `scorecard-report` |
 | Trivy report | ✅ | CI artifacts `security-reports` (txt + json) et `docker-image-reports` |
-| VEX file | ⚠️ squelette OpenVEX | CI artifact `security-reports/vex.openvex.json` |
+| VEX file | ✅ | CI artifact `security-reports/vex.openvex.json`, généré par [scripts/generate_vex.py](scripts/generate_vex.py) à partir du `trivy-report.json` |
 | Pipeline testing (break/fix) | ✅ | branche `tp/pipeline-test-demo` (runs ci-dessous) |
 | Prometheus UI avec metrics | ✅ | service `prometheus` dans [docker-compose.dev.yml](docker-compose.dev.yml) |
 | Grafana dashboard | ✅ | service `grafana` + provisioning [grafana/](grafana/) |
