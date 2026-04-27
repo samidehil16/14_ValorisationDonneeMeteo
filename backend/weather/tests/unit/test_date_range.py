@@ -15,8 +15,7 @@ from weather.utils.date_range import (
 
 def test_iter_days_intersecting_inclusive_single_day():
     out = list(iter_days_intersecting(dt.date(2024, 1, 1), dt.date(2024, 1, 1)))
-    # INTENTIONAL BREAK for TP pipeline-testing demo (CI must catch this)
-    assert out == [dt.date(2024, 1, 2)]
+    assert out == [dt.date(2024, 1, 1)]
 
 
 def test_iter_days_intersecting_inclusive_range():
