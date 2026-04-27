@@ -19,57 +19,22 @@ Fork pédagogique du projet **Data For Good — Saison 14**. Ce README documente
 9. [Structure du projet](#structure-du-projet)
 10. [Workflow Data For Good (existant)](#workflow-data-for-good-existant)
 
----
-
-## Architecture de la stack
-
-```
-                       ┌─────────────────┐
-                       │     nginx       │  port hôte 80 → conteneur 8080
-                       │  (unprivileged) │
-                       └────┬───────┬────┘
-                            │       │
-                  /         │       │  /api/v1/*
-             ┌──────────────▼──┐ ┌──▼──────────────────┐
-             │  frontend Nuxt  │ │   backend Django    │   /metrics
-             │  (DHI Node 24)  │ │  (DHI Python 3.13)  │ ◀──────────┐
-             └─────────────────┘ └─────┬───────────────┘            │
-                                       │                            │
-                                       │ SQL via bd_net             │ scrape 15s
-                                       │                            │
-                              ┌────────▼─────────┐         ┌────────┴────────┐
-                              │   timescaledb    │         │   prometheus    │  port 9090
-                              │  pg17 + tsdb     │         │  v3.3.0         │
-                              └──────────────────┘         └────────┬────────┘
-                                                                    │
-                                                                    │ datasource
-                                                            ┌───────▼────────┐
-                                                            │    grafana     │  port 3001
-                                                            │   v11.3.1      │
-                                                            └────────────────┘
-```
-
-- **Réseau Docker** : `app_net` pour le trafic applicatif, `bd_net` pour la BDD (isolation réseau).
-- **Sécurité commune** à tous les services : `read_only: true`, `cap_drop: [ALL]`, `security_opt: [no-new-privileges:true]`, `tmpfs` ciblés, limites mémoire (`deploy.resources.limits.memory`).
-
----
-
 ## Récapitulatif des livrables
 
-| # | Livrable demandé | Statut | Emplacement |
-|---|---|---|---|
-| 1.1 | Pipeline CI/CD fonctionnel | ✅ | [.github/workflows/ci-tp.yml](.github/workflows/ci-tp.yml) |
-| 1.2 | Badge dans le README | ✅ | ligne 3 ci-dessus |
-| 1.3 | Image Docker | ✅ | `ghcr.io/samidehil16/14_valorisationdonneemeteo-{backend,frontend}:latest` |
-| 1.4 | Test report | ✅ | CI artifact `backend-test-report` (JUnit XML + coverage) |
-| 1.5 | Scan code report | ✅ | CI artifact `scorecard-report` (SARIF + JSON natif) |
-| 1.6 | Trivy report | ✅ | CI artifact `security-reports` (table + JSON) + `docker-image-reports` |
-| 1.7 | OpenVEX file | ✅ | CI artifact `security-reports/vex.openvex.json` (16 statements) |
-| 2.1 | Casser un test → CI catch | ✅ | branche `tp/pipeline-test-demo`, run [#24990510013](https://github.com/samidehil16/14_ValorisationDonneeMeteo/actions/runs/24990510013) |
-| 2.2 | Fixer le test → CI passe | ✅ | run [#24990866309](https://github.com/samidehil16/14_ValorisationDonneeMeteo/actions/runs/24990866309) |
-| 3.1 | Prometheus UI avec metrics | ✅ | service `prometheus` dans [docker-compose.dev.yml](docker-compose.dev.yml) |
-| 3.2 | Grafana dashboard | ✅ | provisioning [grafana/](grafana/) |
-| 4.1 | DHI Hardened Images | ✅ | [backend/Dockerfile](backend/Dockerfile), [frontend/Dockerfile](frontend/Dockerfile) |
+| #   | Livrable demandé           | Statut | Emplacement                                                                                                                             |
+| --- | -------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| 1.1 | Pipeline CI/CD fonctionnel | ✅     | [.github/workflows/ci-tp.yml](.github/workflows/ci-tp.yml)                                                                              |
+| 1.2 | Badge dans le README       | ✅     | ligne 3 ci-dessus                                                                                                                       |
+| 1.3 | Image Docker               | ✅     | `ghcr.io/samidehil16/14_valorisationdonneemeteo-{backend,frontend}:latest`                                                              |
+| 1.4 | Test report                | ✅     | CI artifact `backend-test-report` (JUnit XML + coverage)                                                                                |
+| 1.5 | Scan code report           | ✅     | CI artifact `scorecard-report` (SARIF + JSON natif)                                                                                     |
+| 1.6 | Trivy report               | ✅     | CI artifact `security-reports` (table + JSON) + `docker-image-reports`                                                                  |
+| 1.7 | OpenVEX file               | ✅     | CI artifact `security-reports/vex.openvex.json` (16 statements)                                                                         |
+| 2.1 | Casser un test → CI catch  | ✅     | branche `tp/pipeline-test-demo`, run [#24990510013](https://github.com/samidehil16/14_ValorisationDonneeMeteo/actions/runs/24990510013) |
+| 2.2 | Fixer le test → CI passe   | ✅     | run [#24990866309](https://github.com/samidehil16/14_ValorisationDonneeMeteo/actions/runs/24990866309)                                  |
+| 3.1 | Prometheus UI avec metrics | ✅     | service `prometheus` dans [docker-compose.dev.yml](docker-compose.dev.yml)                                                              |
+| 3.2 | Grafana dashboard          | ✅     | provisioning [grafana/](grafana/)                                                                                                       |
+| 4.1 | DHI Hardened Images        | ✅     | [backend/Dockerfile](backend/Dockerfile), [frontend/Dockerfile](frontend/Dockerfile)                                                    |
 
 ---
 
@@ -89,14 +54,14 @@ Le DAG est exprimé via les `needs:` entre jobs — ce qui permet à GitHub Acti
 
 ### Stages présents (cf. consigne du TP)
 
-| Stage demandé par la consigne | Job(s) qui l'implémente | Détails |
-|---|---|---|
-| **Install dependencies** | `backend`, `frontend` | `uv sync --extra dev` (Python) / `npm ci --legacy-peer-deps` (Node) |
-| **Run tests** | `backend`, `frontend` | `pytest --cov --junitxml` / `vitest --project unit` |
-| **Run linter** | `backend`, `frontend` | `ruff check .` / `eslint --ext .js,.ts,.vue .` |
-| **Run security scan** | `security-scan` (+ `scorecard`) | Trivy fs (table+JSON), SBOM CycloneDX, OpenVEX, OSSF Scorecard |
-| **Build Docker image** | `build-and-push` | `docker/build-push-action@v5` sur `./backend` et `./frontend` |
-| **Push to registry (main only)** | `build-and-push` | `if: github.ref == 'refs/heads/main'` → `ghcr.io/...` |
+| Stage demandé par la consigne    | Job(s) qui l'implémente         | Détails                                                             |
+| -------------------------------- | ------------------------------- | ------------------------------------------------------------------- |
+| **Install dependencies**         | `backend`, `frontend`           | `uv sync --extra dev` (Python) / `npm ci --legacy-peer-deps` (Node) |
+| **Run tests**                    | `backend`, `frontend`           | `pytest --cov --junitxml` / `vitest --project unit`                 |
+| **Run linter**                   | `backend`, `frontend`           | `ruff check .` / `eslint --ext .js,.ts,.vue .`                      |
+| **Run security scan**            | `security-scan` (+ `scorecard`) | Trivy fs (table+JSON), SBOM CycloneDX, OpenVEX, OSSF Scorecard      |
+| **Build Docker image**           | `build-and-push`                | `docker/build-push-action@v5` sur `./backend` et `./frontend`       |
+| **Push to registry (main only)** | `build-and-push`                | `if: github.ref == 'refs/heads/main'` → `ghcr.io/...`               |
 
 ### Choix techniques notables
 
@@ -106,13 +71,13 @@ Le DAG est exprimé via les `needs:` entre jobs — ce qui permet à GitHub Acti
 
 ### Artifacts uploadés
 
-| Job | Artifact | Contenu |
-|---|---|---|
-| `backend` | `backend-test-report` | `coverage.xml` + `test-results.xml` (JUnit) |
-| `frontend` | `frontend-test-report` | dossier `coverage/` |
-| `security-scan` | `security-reports` | `trivy-report.{txt,json}`, `sbom-cyclonedx.json`, `vex.openvex.json` |
-| `scorecard` | `scorecard-report` | `scorecard-results.sarif` + `scorecard-results.json` |
-| `build-and-push` | `docker-image-reports` | `trivy-{backend,frontend}-image.txt` (scan des images pushées) |
+| Job              | Artifact               | Contenu                                                              |
+| ---------------- | ---------------------- | -------------------------------------------------------------------- |
+| `backend`        | `backend-test-report`  | `coverage.xml` + `test-results.xml` (JUnit)                          |
+| `frontend`       | `frontend-test-report` | dossier `coverage/`                                                  |
+| `security-scan`  | `security-reports`     | `trivy-report.{txt,json}`, `sbom-cyclonedx.json`, `vex.openvex.json` |
+| `scorecard`      | `scorecard-report`     | `scorecard-results.sarif` + `scorecard-results.json`                 |
+| `build-and-push` | `docker-image-reports` | `trivy-{backend,frontend}-image.txt` (scan des images pushées)       |
 
 ---
 
@@ -167,6 +132,7 @@ Trois éléments suffisent — voir [backend/config/urls.py](backend/config/urls
 3. Route `path("", include("django_prometheus.urls"))` → expose `/metrics` au format Prometheus exposition
 
 Métriques par défaut récupérées :
+
 - `django_http_requests_total_by_method_total` — compteur par méthode HTTP
 - `django_http_responses_total_by_status_total` — compteur par status code
 - `django_http_requests_latency_including_middlewares_seconds_bucket` — histogramme de latence (avec middlewares)
@@ -202,14 +168,14 @@ grafana/
     └── django-overview.json        ← dashboard Django avec 4 panels
 ```
 
-### Dashboard *Django Backend Overview*
+### Dashboard _Django Backend Overview_
 
-| Panel | Requête PromQL |
-|---|---|
-| Request rate by method | `sum by (method) (rate(django_http_requests_total_by_method_total[5m]))` |
+| Panel                    | Requête PromQL                                                            |
+| ------------------------ | ------------------------------------------------------------------------- |
+| Request rate by method   | `sum by (method) (rate(django_http_requests_total_by_method_total[5m]))`  |
 | Responses by status code | `sum by (status) (rate(django_http_responses_total_by_status_total[5m]))` |
-| Latency p50 / p95 / p99 | `histogram_quantile(0.95, sum by (le) (rate(...latency..._bucket[5m])))` |
-| Backend memory (RSS) | `process_resident_memory_bytes{job="backend"}` |
+| Latency p50 / p95 / p99  | `histogram_quantile(0.95, sum by (le) (rate(...latency..._bucket[5m])))`  |
+| Backend memory (RSS)     | `process_resident_memory_bytes{job="backend"}`                            |
 
 ### Validation end-to-end
 
@@ -253,6 +219,7 @@ ENTRYPOINT ["gunicorn", "config.wsgi:application", ...]
 ```
 
 Bénéfices :
+
 - **Toolchain absente** de l'image runtime → pas de `pip install` possible si compromise
 - **Pas de shell** → un attaquant qui obtiendrait RCE ne peut pas pivoter avec `bash`
 - **Run as `nonroot`** par défaut (utilisateur built-in dans l'image DHI distroless)
@@ -273,6 +240,7 @@ deploy.resources.limits.memory: 256M
 ```
 
 Cas particuliers :
+
 - `nginx` est passé en **`nginxinc/nginx-unprivileged`** (port 8080 dans le conteneur) parce que l'image officielle nginx tourne en root pour binder le port 80.
 - `prometheus` tourne avec `user: "nobody"`.
 - `timescaledb` garde quelques capabilities (`CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `SETGID`, `SETUID`) parce que PostgreSQL en a besoin pour gérer ses fichiers de données.
@@ -291,7 +259,7 @@ Les bases `dhi.io/...` exigent des credentials Docker Hub. Le job `build-and-pus
   with: { registry: dhi.io, username: ${{ secrets.DHI_USERNAME }}, password: ${{ secrets.DHI_TOKEN }} }
 ```
 
-Les secrets `DHI_USERNAME` et `DHI_TOKEN` sont configurés dans `Settings → Secrets → Actions` du repo. Le PAT Docker Hub doit avoir le scope *Public Repo Read* et le compte doit avoir activé l'accès au catalog DHI (gratuit).
+Les secrets `DHI_USERNAME` et `DHI_TOKEN` sont configurés dans `Settings → Secrets → Actions` du repo. Le PAT Docker Hub doit avoir le scope _Public Repo Read_ et le compte doit avoir activé l'accès au catalog DHI (gratuit).
 
 ---
 
@@ -324,8 +292,8 @@ Exemple de statement généré :
 
 ```json
 {
-  "vulnerability": {"@id": "CVE-2026-1207", "name": "CVE-2026-1207"},
-  "products": [{"@id": "pkg:pypi/django@5.2.10"}],
+  "vulnerability": { "@id": "CVE-2026-1207", "name": "CVE-2026-1207" },
+  "products": [{ "@id": "pkg:pypi/django@5.2.10" }],
   "status": "affected",
   "timestamp": "2026-04-27T14:35:48.000Z",
   "action_statement": "Upstream fix available in: 6.0.2, 5.2.11, 4.2.28"
@@ -433,54 +401,3 @@ gh run download $RUN_ID --repo samidehil16/14_ValorisationDonneeMeteo \
 ├── docker-compose.dev.yml                  # stack hardened complète
 └── README.md                               # ce fichier
 ```
-
----
-
-## Workflow Data For Good (existant)
-
-> Cette section conserve les conventions du projet upstream Data For Good Saison 14.
-
-Lire les bonnes pratiques en détail : [Branches et commits — Workflow de contribution](https://outline.services.dataforgood.fr/doc/onboarding-dev-OFGKWOcxOn).
-
-### Convention de branches
-
-```
-feat/scope/<description>      # nouvelle fonctionnalité
-fix/scope/<description>       # correction de bug
-docs/<sujet>                  # documentation
-refactor/<sujet>              # refactoring
-chore/<sujet>                 # maintenance
-test/<sujet>                  # tests
-```
-
-### Convention de commits
-
-Format `<type>: (<scope>:)? <description>`. Exemples :
-
-```
-feat: itn: ajoute le composant carte météo
-fix: ecarts-normales: corrige l'affichage des températures négatives
-docs: readme: documentation des livrables TP
-test: parser: ajoute tests unitaires
-chore: npm: met à jour les dépendances
-```
-
-### Pre-commit hooks
-
-```bash
-pip install pre-commit
-pre-commit install
-pre-commit run --all-files     # exécution manuelle
-```
-
-Outils utilisés :
-- **Backend** : [Ruff](https://github.com/astral-sh/ruff) (lint + format), [nbstripout](https://github.com/kynan/nbstripout) (purge des notebooks)
-- **Frontend** : ESLint + Prettier
-- **Commun** : check merge conflicts, trim whitespace, fix end-of-line
-
-### Pull Requests
-
-- Une PR = une fonctionnalité ou un fix
-- Au moins une review avant merge
-- Merge en **Squash and merge** sur GitHub pour garder un historique linéaire
-- Ne jamais pusher directement sur `main`
