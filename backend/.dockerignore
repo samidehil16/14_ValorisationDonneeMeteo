@@ -29,7 +29,7 @@ timescaledb-env
 sql
 
 # Docs / tests artefacts
-README.md
+# README.md kept: pyproject.toml references it (readme = "README.md")
 openapi
 tox.ini
 
