@@ -132,10 +132,11 @@ jobs:
             sbom-cyclonedx.json
             vex.openvex.json
 
-  # ── Stage 4: OSSF Scorecard ────────────────────────────────────────
+  # ── Stage 4: OSSF Scorecard (main branch only — action restriction) ──
   scorecard:
     runs-on: ubuntu-24.04
     needs: [security-scan]
+    if: github.ref == 'refs/heads/main'
     permissions:
       security-events: write
       id-token: write
